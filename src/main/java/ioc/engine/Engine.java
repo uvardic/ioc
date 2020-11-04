@@ -1,54 +1,54 @@
 package ioc.engine;
 
-import ioc.annotations.Autowired;
-import ioc.annotations.Bean;
-import ioc.annotations.Component;
-import ioc.annotations.Service;
+import ioc.annotations.*;
+import ioc.exception.IOCStateException;
+import org.apache.log4j.Logger;
 
-import java.util.LinkedList;
-import java.util.Queue;
-import java.util.Set;
-
-
-// todo Provera za interfejse preko Dependency supliera
-// todo namestiti verbose kako treba
-// todo Ocistiti ClassModel
+import java.lang.annotation.Annotation;
+import java.text.SimpleDateFormat;
+import java.util.*;
 
 public class Engine {
 
-    private static final Loader loader = new Loader();
-
-    private static final Filter filter = new Filter();
-
-    private static final Mapper mapper = new Mapper();
-
-    public static <T> T start(Class<T> referenceClass) {
-        Set<Class<?>> loadedClasses = loader.loadAllClasses(referenceClass);
-        Set<Class<?>> filteredClasses = filter.relevantFilter(loadedClasses);
-        Set<ClassModel> mappedClasses = mapper.mapToModel(filteredClasses);
-        DependencySupplier.initializeQualifierContext(mappedClasses);
-        inject(new LinkedList<>(mappedClasses));
-        return referenceClass.cast(findReferenceClassInstance(referenceClass));
+    static {
+        SimpleDateFormat logDateFormat = new SimpleDateFormat("yyyy-MM-dd-hh-mm-ss");
+        System.setProperty("current.date.time", logDateFormat.format(new Date()));
     }
 
-    private static final int iterationLimit = 10000;
+    private static final Logger logger = Logger.getLogger(Engine.class);
 
-    public static void inject(Queue<ClassModel> queuedClasses) {
-        int count = 0;
+    public static final Set<Class<?>> relevantAnnotations = new HashSet<>();
 
-        while (!queuedClasses.isEmpty()) {
-            if (count == iterationLimit)
-                throw new IllegalStateException("Cyclic dependencies found!");
+    static {
+        relevantAnnotations.add(Autowired.class);
+        relevantAnnotations.add(Bean.class);
+        relevantAnnotations.add(Component.class);
+        relevantAnnotations.add(Qualifier.class);
+        relevantAnnotations.add(Service.class);
+    }
 
-            ClassModel dequeuedModel = queuedClasses.remove();
+    static boolean isAnnotationRelevant(Annotation annotation) {
+        return relevantAnnotations.contains(annotation.annotationType());
+    }
 
-            if (dequeuedModel.isResolved())
-                dequeuedModel.instantiate();
-            else
-                queuedClasses.add(dequeuedModel);
+    private static Set<ClassModel> mappedClasses;
 
-            count++;
-        }
+    static ClassModel findClassModelFor(Class<?> aClass) {
+        return mappedClasses.stream()
+                .filter(classModel -> classModel.getName().equals(aClass.getName()))
+                .findFirst()
+                .orElseThrow(() -> new IOCStateException(
+                        String.format("Class model for class: %s wasn't found!", aClass.getName())
+                ));
+    }
+
+    public static <T> T start(Class<T> referenceClass) {
+        logger.info("Starting...");
+        Set<Class<?>> loadedClasses = Loader.loadAllClasses(referenceClass);
+        Set<Class<?>> filteredClasses = Filter.relevantFilter(loadedClasses);
+        mappedClasses = Mapper.mapToModel(filteredClasses);
+        startWorker();
+        return referenceClass.cast(findReferenceClassInstance(referenceClass));
     }
 
     private static Object findReferenceClassInstance(Class<?> referenceClass) {
@@ -56,67 +56,28 @@ public class Engine {
                 .stream()
                 .filter(instance -> instance.getClass().equals(referenceClass))
                 .findFirst()
-                .orElseThrow(() -> new IllegalStateException("Reference class instance not found!"));
+                .orElseThrow(() -> new IOCStateException("Reference class instance not found!"));
     }
 
-}
+    private static final int depthLimit = 10000;
 
-@Bean
-class Engine2 {
+    private static void startWorker() {
+        Queue<ClassModel> queuedClasses = new LinkedList<>(mappedClasses);
 
-    @Autowired
-    private Klasa1 k;
+        int depth = 0;
+        while (!queuedClasses.isEmpty()) {
+            if (depth == depthLimit)
+                throw new IOCStateException("Fatal engine failure! Check you shit!");
 
-    @Autowired
-    private Klasa2 k2;
+            ClassModel dequeuedModel = queuedClasses.remove();
 
-    public void ispis() {
-        k.ispisi();
-        k2.ispisi();
-    }
-
-    public static void main(String[] args) {
-        Engine2 e = Engine.start(Engine2.class);
-        e.ispis();
-    }
-
-}
-
-@Service
-class Klasa1 {
-
-    @Autowired
-    private Klasa2 k;
-
-    public void ispisi() {
-        System.err.println("");
-        System.err.println("");
-        System.err.println("");
-        System.err.println("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA");
-    }
-
-}
-
-@Component
-class Klasa2 {
-
-    @Autowired
-    private Klasa3 k3;
-
-    public void ispisi() {
-        k3.ispisi();
-    }
-
-}
-
-@Service
-class Klasa3 {
-
-    public void ispisi() {
-        System.err.println("");
-        System.err.println("");
-        System.err.println("");
-        System.err.println("VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV");
+            if (dequeuedModel.isResolved())
+                dequeuedModel.resolveClass();
+            else {
+                queuedClasses.add(dequeuedModel);
+                depth++;
+            }
+        }
     }
 
 }

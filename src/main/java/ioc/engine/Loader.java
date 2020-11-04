@@ -6,20 +6,22 @@ import java.util.Set;
 
 import static java.util.Objects.requireNonNull;
 
-public class Loader {
+class Loader {
 
-    private final Set<Class<?>> loadedClasses = new HashSet<>();
+    private static final Set<Class<?>> loadedClasses = new HashSet<>();
 
-    public Set<Class<?>> loadAllClasses(Class<?> referenceClass) {
+    private static final String rootPackageName = "";
+
+    public static Set<Class<?>> loadAllClasses(Class<?> referenceClass) {
         loadedClasses.clear();
 
         String filePath = referenceClass.getProtectionDomain().getCodeSource().getLocation().getFile();
-        loadWorker(new File(filePath), "");
+        loadWorker(new File(filePath), rootPackageName);
 
         return loadedClasses;
     }
 
-    private void loadWorker(File file, String packageName) {
+    private static void loadWorker(File file, String packageName) {
         if (file.isDirectory()) {
             packageName += file.getName() + ".";
 
@@ -32,11 +34,11 @@ public class Loader {
         }
     }
 
-    private boolean isClass(File file) {
+    private static boolean isClass(File file) {
         return file.getName().endsWith(".class");
     }
 
-    private Class<?> createClassObject(String className) {
+    private static Class<?> createClassObject(String className) {
         try {
             return Class.forName(formatClassName(className));
         } catch (ClassNotFoundException e) {
@@ -44,7 +46,7 @@ public class Loader {
         }
     }
 
-    private String formatClassName(String className) {
+    private static String formatClassName(String className) {
         return className
                 .replaceAll("classes.", "")
                 .replaceAll(".class", "");
